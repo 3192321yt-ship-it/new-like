@@ -301,10 +301,22 @@
       left: { x: -1, y: 0 },
       right: { x: 1, y: 0 }
     };
+    const PLAYER_SPAWN = { x: 330, y: 540 };
+    const MOVE_KEYS = new Map([
+      ["ArrowUp", "up"],
+      ["KeyW", "up"],
+      ["ArrowDown", "down"],
+      ["KeyS", "down"],
+      ["ArrowLeft", "left"],
+      ["KeyA", "left"],
+      ["ArrowRight", "right"],
+      ["KeyD", "right"]
+    ]);
 
     let state;
     let lastTime = 0;
     let shotTimer = 0;
+    let keyOrder = [];
 
     function rectsTouch(a, b) {
       return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -350,12 +362,24 @@
         bullets: [],
         particles: [],
         enemies: [],
-        player: { x: 435, y: 520, w: 30, h: 30, dir: "up", speed: 165, cooldown: 0, invincible: 1.2 },
+        player: { x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y, w: 30, h: 30, dir: "up", speed: 165, cooldown: 0, invincible: 1.2 },
         base: { x: 420, y: 540, w: 60, h: 45, hp: 1 }
       };
     }
 
+    function resetPlayer(extra = {}) {
+      Object.assign(state.player, {
+        x: PLAYER_SPAWN.x,
+        y: PLAYER_SPAWN.y,
+        dir: "up",
+        cooldown: 0.5,
+        invincible: 1.5
+      }, extra);
+    }
+
     function resetGame() {
+      keys.clear();
+      keyOrder = [];
       state = createState();
       updateHud();
       setMessage("坦克大战", "按 Enter 开始，方向键移动，空格开火");
@@ -476,7 +500,7 @@
         endGame(false, "任务失败", "按 R 或 Enter 重新开始");
         return;
       }
-      Object.assign(state.player, { x: 435, y: 520, dir: "up", cooldown: 0.5, invincible: 1.5 });
+      resetPlayer();
     }
 
     function endGame(won, title, subtitle) {
@@ -494,7 +518,7 @@
       state.bullets = [];
       state.enemies = [];
       state.base.hp = 1;
-      Object.assign(state.player, { x: 435, y: 520, dir: "up", invincible: 1.2 });
+      resetPlayer({ invincible: 1.2 });
       setMessage(`第 ${state.level} 关`, "准备迎战下一波敌军");
       state.paused = true;
       setTimeout(() => {
@@ -509,10 +533,14 @@
       const p = state.player;
       p.cooldown = Math.max(0, p.cooldown - dt);
       p.invincible = Math.max(0, p.invincible - dt);
-      if (keys.has("ArrowUp") || keys.has("KeyW")) moveTank(p, dt, "up");
-      else if (keys.has("ArrowDown") || keys.has("KeyS")) moveTank(p, dt, "down");
-      else if (keys.has("ArrowLeft") || keys.has("KeyA")) moveTank(p, dt, "left");
-      else if (keys.has("ArrowRight") || keys.has("KeyD")) moveTank(p, dt, "right");
+      let activeMoveKey = "";
+      for (let i = keyOrder.length - 1; i >= 0; i--) {
+        if (keys.has(keyOrder[i]) && MOVE_KEYS.has(keyOrder[i])) {
+          activeMoveKey = keyOrder[i];
+          break;
+        }
+      }
+      if (activeMoveKey) moveTank(p, dt, MOVE_KEYS.get(activeMoveKey));
       if (keys.has("Space")) shoot(p);
     }
 
@@ -707,10 +735,14 @@
         state.paused = !state.paused;
         setMessage(state.paused ? "已暂停" : "", state.paused ? "按 P 继续" : "");
       }
+      if (MOVE_KEYS.has(e.code)) keyOrder = keyOrder.filter((key) => key !== e.code).concat(e.code);
       keys.add(e.code);
     });
 
-    window.addEventListener("keyup", (e) => keys.delete(e.code));
+    window.addEventListener("keyup", (e) => {
+      keys.delete(e.code);
+      keyOrder = keyOrder.filter((key) => key !== e.code);
+    });
     startBtn.addEventListener("click", startGame);
     resetBtn.addEventListener("click", () => {
       resetGame();
@@ -721,9 +753,13 @@
       const key = btn.dataset.key === " " ? "Space" : btn.dataset.key;
       const down = () => {
         keys.add(key);
+        if (MOVE_KEYS.has(key)) keyOrder = keyOrder.filter((item) => item !== key).concat(key);
         startGame();
       };
-      const up = () => keys.delete(key);
+      const up = () => {
+        keys.delete(key);
+        keyOrder = keyOrder.filter((item) => item !== key);
+      };
       btn.addEventListener("pointerdown", down);
       btn.addEventListener("pointerup", up);
       btn.addEventListener("pointerleave", up);
